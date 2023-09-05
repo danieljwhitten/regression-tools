@@ -1,0 +1,152 @@
+---
+title: "regression_example"
+format: html
+editor: visual
+bibliography: references.bib
+---
+
+## Setup Data
+
+Import essential functions first (this step is hidden).
+
+```{r setup}
+#| include: false
+source("./regression_functions.R")
+```
+
+Then, read in CTNS 2021 PUMF data:
+
+```{r read data}
+#| message: false
+#| warning: false
+path_txt_data <- "~/data/data_sources/CTNS2021/SAS/Data_Donnees/CTNS2021ECTN_P.txt"
+path_i <- "~/data/data_sources/CTNS2021/SAS/Data_Donnees/Syntax_Syntaxe/SAS/CTNS2021ECTN_P_i.SAS"
+path_lb <- "~/data/data_sources/CTNS2021/SAS/Data_Donnees/Syntax_Syntaxe/SAS/CTNS2021ECTN_P_lbe.SAS"
+path_pf <- "~/data/data_sources/CTNS2021/SAS/Data_Donnees/Syntax_Syntaxe/SAS/CTNS2021ECTN_P_pfe.SAS"
+path_fmt <- "~/data/data_sources/CTNS2021/SAS/Data_Donnees/Syntax_Syntaxe/SAS/CTNS2021ECTN_P_fmt.SAS"
+
+ctns_master <- 
+  load_statcan_data(path_txt_data,
+                    path_i,
+                    path_lb,
+                    path_pf,
+                    path_fmt)
+```
+
+### Treat Variables
+
+There are no truly continuous variables on the PUMF, for confidentiality reasons. Instead, we will create one by re-scaling each of the daily \# of cigarette variables, and taking the average in a new variable `cigavg`.
+
+To rescale, we will take the median value between the range of each value. Eg.
+
+`TBC_30AR == 5` changes from "`21 to 25 cigarettes"` to `23`.
+
+```{r define DV}
+ctns <- ctns_master %>% 
+  mutate(
+    across(TBC_30AR:TBC_30GR, 
+           ~ case_when(.x == 0 ~ 0,
+                       .x > 95 ~ NA,
+                       TRUE ~ .x*5-2))) %>%
+  rowwise() %>% 
+  mutate(cigavg = 
+           mean(c_across(TBC_30AR:TBC_30GR),
+                na.rm = TRUE)) %>%
+  ungroup()
+```
+
+Binary DVs exist on the file to measure Yes/No for past-30 day use of Vaping Devices, Cannabis, Vaping Cannabis, and Alcohol:
+
+`DV_VP30R, DV_CN30R, DV_VC30R, DV_AL30R`
+
+We need to create one to measure (`otp_any`) for Other Tobacco Products, based on `OTP_05AR:OTP_05ER`.
+
+```{r define otp_any}
+ctns <- ctns %>% 
+  mutate(otp_any = case_when(
+    if_any(OTP_05A:OTP_05ER, ~ .x < 4) ~ 1,
+    if_any(OTP_05A:OTP_05ER, ~ .x == 4) ~ 0
+    ))
+```
+
+Levels 1 and 2 of `AGEGROUP` are 5-year increments, while the others are 10-year increments. If we recode this, the remaining 6 ordinal categories should be sufficient to treat as continuous[@robitzsch2020].
+
+```{r define agerange}
+ctns <- ctns %>% 
+  mutate(agerange = 
+           case_when(
+             AGEGROUP < 3 ~ 1,
+             TRUE ~ AGEGROUP - 1))
+```
+
+For the rest of our independent variables, we need to:
+
+-   convert categorical variables to `factor`s using existing levels
+
+-   define levels for new categorical var `otp_any`
+
+-   exclude missings
+
+-   drop unused levels
+
+-   leave `HHLDSIZE` to treat as continuous
+
+-   drop unused variables
+
+```{r treat variables}
+ctns <- ctns %>% 
+  mutate(
+    across(all_of(c("DV_AL30R",
+                    "DV_CN30R",
+                    "DV_VC30R",
+                    "DV_VP30R",
+                    "FIRSTTRR",
+                    "GENDER",
+                    "PROV_C")),
+           as_factor),
+    cigavg = ifelse(is.nan(cigavg), 
+                    NA, 
+                    cigavg),
+    across(all_of(c("DV_AL30R",
+                    "DV_CN30R",
+                    "DV_VC30R",
+                    "DV_VP30R",
+                    "FIRSTTRR",
+                    "HHLDSIZE",
+                    "GENDER")),
+           ~ case_when(
+             .x %in% c("Valid skip",
+                       "Don't know",
+                       "Refusal",
+                       "Not stated") ~ NA,
+             TRUE ~ .x)),
+    otp_any = fct_recode(factor(otp_any),
+                         Yes = "1",
+                         No = "0"),
+    across(where(is.factor), fct_drop)
+  ) %>%
+  select(
+    cigavg,
+    FIRSTTRR,
+    DV_AL30R,
+    DV_CN30R,
+    DV_VC30R,
+    DV_VP30R,
+    otp_any,
+    HHLDSIZE,
+    GENDER,
+    PROV_C,
+    agerange
+  )
+```
+
+## Descriptive Statistics
+
+Generate some descriptive statistics for the variables as they exist on the file. Note that there are separate tables for categorical (`factor`s) and numerical variables (those we are treating as continuous for the purpose of this analysis).
+
+```{r descritpive statistics}
+#| results: asis
+ctns %>% 
+  descriptives() %>% 
+  print_descriptives(ctns)
+```
