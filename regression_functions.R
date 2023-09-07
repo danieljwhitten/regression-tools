@@ -10,8 +10,8 @@ library(tidyverse)
 source("../statcan-data-input/data_from_txt_and_sas.R")
 
 
-
-# raw CTNS PUMF
+# 
+# # raw CTNS PUMF
 # ctns <- load_statcan_data(path_txt_data,
 #                           path_i,
 #                           path_lb,
@@ -21,22 +21,22 @@ source("../statcan-data-input/data_from_txt_and_sas.R")
 # 
 # 
 # dat <- ctns %>%
-#   mutate(across(TBC_30AR:TBC_30GR, 
+#   mutate(across(TBC_30AR:TBC_30GR,
 #                 ~ case_when(.x == 0 ~ 0,
 #                             .x > 95 ~ NA,
 #                             TRUE ~ .x*5-2)), # tbc from ordinal to continuous (mean)
 #          agerange = case_when(AGEGROUP < 3 ~ 1,
 #                               TRUE ~ AGEGROUP - 1),
 #          otp_any = case_when(if_any(OTP_05A:OTP_05ER, ~ .x < 4) ~ 1,
-#                              if_any(OTP_05A:OTP_05ER, ~ .x == 4) ~ 0)) %>% 
-#   rowwise() %>% 
-#   mutate(cigavg = mean(c_across(TBC_30AR:TBC_30GR), 
-#                             na.rm = TRUE)) %>% 
+#                              if_any(OTP_05A:OTP_05ER, ~ .x == 4) ~ 0)) %>%
+#   rowwise() %>%
+#   mutate(cigavg = mean(c_across(TBC_30AR:TBC_30GR),
+#                             na.rm = TRUE)) %>%
 #   ungroup() %>%
 #   mutate(across(all_of(c("DV_AL30R",
 #                          "DV_CN30R",
 #                          "DV_VC30R",
-#                          "DV_VP30R", 
+#                          "DV_VP30R",
 #                          "FIRSTTRR",
 #                          "GENDER",
 #                          "PROV_C")),
@@ -48,7 +48,7 @@ source("../statcan-data-input/data_from_txt_and_sas.R")
 #                          "DV_VP30R",# exclude missings
 #                          "FIRSTTRR",
 #                          "HHLDSIZE",
-#                          "GENDER")), 
+#                          "GENDER")),
 #                 ~ case_when(.x %in% c("Valid skip",
 #                                      "Don't know",
 #                                      "Refusal",
@@ -58,8 +58,8 @@ source("../statcan-data-input/data_from_txt_and_sas.R")
 #                               Yes = "1",
 #                               No = "0"),
 #          across(where(is.factor), fct_drop)) %>%
-#   select(cigavg, 
-#          FIRSTTRR, 
+#   select(cigavg,
+#          FIRSTTRR,
 #          DV_AL30R,
 #          DV_CN30R,
 #          DV_VC30R,
@@ -67,10 +67,10 @@ source("../statcan-data-input/data_from_txt_and_sas.R")
 #          otp_any,
 #          HHLDSIZE,
 #          GENDER,
-#          PROV_C, 
+#          PROV_C,
 #          agerange)
-
-#across(where(is.factor), fct_infreq),
+# 
+# #across(where(is.factor), fct_infreq),
 
 freq_table <- function(dat, v) {
   freq_tab <- table(dat[[v]], useNA = "always")
@@ -107,6 +107,56 @@ freq_table <- function(dat, v) {
       across(contains("cumulative"), \(x) max(x, na.rm = TRUE))
     )) 
   return(out)
+}
+
+freq_tables <- function(dat) {
+  cat <-
+    bind_rows(sapply(names(select(dat, where(is.factor))), 
+                     \(x) freq_table(dat, x), 
+                     simplify = FALSE)) %>% 
+    mutate(variable = unlist(
+      sapply(
+        names(select(dat, where(is.factor))), 
+        \(x) rep(x, length(levels(dat[[x]])) + 2))
+    )) %>% 
+    relocate(variable)
+  
+  return(list(cat = cat, dat = dat))
+}
+
+print_freq_table <- function(freq_tables) {
+  cat <-  freq_tables$cat
+  dat <-  freq_tables$dat
+  # create group index of variable names: # of lines
+  index <- setNames(unlist(sapply(unique(cat$variable),
+                                  \(x) nrow(filter(cat, variable == x)))), 
+                    
+                    unlist(sapply(unique(cat$variable),
+                                  \(x) if (!is.null(var_label(dat[[x]])))
+                                    paste(x, var_label(dat[[x]]), sep = " - ")
+                                  else
+                                    x)))
+  
+  cat_tbl <- cat[-1] %>% # drop variable from output
+    kbl(col.names = str_to_title(gsub("[_]",
+                                      " ",
+                                      names(.))),
+        booktabs = TRUE,
+        digits = 2, 
+        format.args = list(big.mark = ",",
+                           scientific = FALSE),
+        caption = "Descriptive Statistics for Categorical Variables") %>% 
+    pack_rows(index = index) %>%  # group lines
+    add_header_above(c(" ", 
+                       "All Cases" = 4, 
+                       "Valid Cases" = 4, 
+                       "Listwise Valid Cases" = 6)) %>%
+    row_spec(cumsum((index)), bold = T) %>% 
+    row_spec(cumsum((index)) - 1, italic = T, bold = F) %>%
+    row_spec(0, align = "c", bold = T) %>% 
+    kable_classic(full_width = F, html_font = "Cambria", fixed_thead = T) 
+  
+  return(cat_tbl)
 }
 
 quant_describe <- function(dat) {
@@ -146,63 +196,14 @@ quant_describe <- function(dat) {
   return(out)
 }
 
-
-
-descriptives <- function(dat) {
-  quant <- quant_describe(dat)
-  cat <-
-    bind_rows(sapply(names(select(dat, where(is.factor))), 
-                     \(x) freq_table(dat, x), 
-                     simplify = FALSE)) %>% 
-    mutate(variable = unlist(
-      sapply(
-        names(select(dat, where(is.factor))), 
-        \(x) rep(x, length(levels(dat[[x]])) + 2))
-      )) %>% 
-    relocate(variable)
-  
-  return(list(cat = cat, quant = quant))
-  
-}
-
-print_descriptives <- function(desc_in, dat) {
-
-  # create group index of variable names: # of lines
-  index <- setNames(unlist(sapply(unique(desc_in$cat$variable),
-                                  \(x) nrow(filter(desc_in$cat, variable == x)))), 
-                    
-                    unlist(sapply(unique(desc_in$cat$variable),
-                      \(x) if (!is.null(var_label(dat[[x]])))
-                        paste(x, var_label(dat[[x]]), sep = " - ")
-                      else
-                        x)))
-
-  cat_tbl <- desc_in$cat[-1] %>% # drop variable from output
-    kbl(col.names = str_to_title(gsub("[_]",
-                                      " ",
-                                      names(.))),
-        booktabs = TRUE,
-        digits = 2, 
-        format.args = list(big.mark = ",",
-                           scientific = FALSE),
-        caption = "Descriptive Statistics for Categorical Variables") %>% 
-    pack_rows(index = index) %>%  # group lines
-    add_header_above(c(" ", 
-                       "All Cases" = 4, 
-                       "Valid Cases" = 4, 
-                       "Listwise Valid Cases" = 6)) %>%
-    row_spec(cumsum((index)), bold = T) %>% 
-    row_spec(cumsum((index)) - 1, italic = T, bold = F) %>%
-    row_spec(0, align = "c", bold = T) %>% 
-    kable_classic(full_width = F, html_font = "Cambria", fixed_thead = T) 
-  
-  quant_tbl <- desc_in$quant %>% 
+print_quant <- function(quant) {
+  quant_tbl <- quant %>% 
     kbl(
       col.names = gsub("^([SI][edq]r?)$", 
                        "\\U\\1", 
                        str_to_title(gsub("[_]",
                                          " ",
-                                         names(desc_in$quant))), 
+                                         names(quant))), 
                        perl = TRUE),
       booktabs = TRUE,
       digits = 2, 
@@ -212,27 +213,99 @@ print_descriptives <- function(desc_in, dat) {
     row_spec(0, align = "c", bold = T) %>% 
     kable_classic(full_width = F, html_font = "Cambria", fixed_thead = T)
   
+  return(quant_tbl)
+}
+
+descriptives <- function(dat) {
+  quant <- quant_describe(dat)
+  cat <- freq_tables(dat)$cat
+  
+  return(list(cat = cat, quant = quant, dat = dat))
+  
+}
+
+print_descriptives <- function(desc_in) {
+  cat_tbl <- print_freq_table(list(cat = desc_in$cat, dat = desc_in$dat))
+  quant_tbl <- print_quant(desc_in$quant)
+  
   print(cat_tbl)  
   cat('\r\n\r\n\r\n\r\n')
   print(quant_tbl)
 }
 
-regress_and_check <- function(data, formula) {
+dummies <- function(dat){
+  out <- model.matrix(
+    ~ .,
+    data = dat,
+    contrasts.arg = lapply(dat[, 
+                               sapply(dat, is.factor), 
+                               drop = FALSE],
+                           contrasts, contrasts = FALSE))
   
-  model_all_factors <- 
-    model.matrix(
-      ~ .,
-      data = dat,
-      contrasts.arg = lapply(dat[, 
-                                 sapply(dat, is.factor), 
-                                 drop = FALSE],
-                             contrasts, contrasts = FALSE))
+  return(out)
+}
+
+dummy_names <- function(dat) {
+  detail = sapply(names(dat), 
+                  \(x) sapply(levels(dat[[x]]), 
+                              \(y) paste(x, y, sep = " - ")))
+  detail[sapply(names(dat), 
+                \(x) length(levels(dat[[x]]))) == 0] <-
+    names(dat)[sapply(names(dat), 
+                      \(x) length(levels(dat[[x]]))) == 0]
+  detail <- unlist(detail)
+  names(detail) <- NULL
   
-  descriptives <- psych::describe(as.data.frame(model_all_factors))
-  
+  return(detail)
+}
+
+correlation_table <- function(dat) {
+  model_all_factors <- dummies(dat)
   correlations <- rcorr(model_all_factors)
+  cor_coef <- correlations$r[-1,-1]
+  cor_p <- correlations$P[-1,-1]
+  mycor <- data.frame(matrix(nrow = nrow(cor_coef), ncol = ncol(cor_coef)))
+  for (i in 1:nrow(cor_coef)){
+    for (j in 1:ncol(cor_coef)){
+      if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.001) p <- "***" else
+        if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.01) p <- "**" else
+          if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.05) p <- "*" else 
+            if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.1) p <- "'" else
+              p <- ""
+            mycor[i,j] <- paste0(round(cor_coef[i,j], 3), p)
+    }
+  }
   
-  fit <- lm(formula, data)
+  names(mycor) <- names(cor_coef[,1])
+  mycor$var <- dummy_names(dat)
+  mycor <- relocate(mycor, var)
+  
+  return(mycor)
+}
+
+print_correlations <- function(cor) {
+  cor_tbl <- cor %>% 
+    kbl(
+      col.names = c("Variable", cor$var),
+      booktabs = TRUE,
+      caption = "Pearson Correlation Coefficients") %>% 
+    row_spec(0, align = "l", bold = F, font_size = 10) %>% 
+    kable_classic(full_width = F, html_font = "Cambria", fixed_thead = T, font_size = 10) %>%
+    footnote(general = "***p < 0.001; **p<0.01; *p<0.05; 'p<0.1") %>% 
+    column_spec(1, border_right = T)
+  
+  print(cor_tbl)
+}
+
+regress_and_check <- function(formula, dat) {
+
+  dat_w_dummies <- as.data.frame(dummies(dat)[-1,-1]) 
+    
+  descr_stats <- quant_describe(dat_w_dummies)
+  
+  corr_tbl <- correlation_table(dat_w_dummies)
+  
+  fit <- lm(formula, dat)
   
   fit_anova <- anova(fit)
   
@@ -252,3 +325,5 @@ regress_and_check <- function(data, formula) {
   
   
 }
+
+

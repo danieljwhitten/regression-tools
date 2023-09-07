@@ -100,6 +100,7 @@ ctns <- ctns %>%
                     "DV_CN30R",
                     "DV_VC30R",
                     "DV_VP30R",
+                    "TBC_41AR",
                     "FIRSTTRR",
                     "GENDER",
                     "PROV_C")),
@@ -111,6 +112,7 @@ ctns <- ctns %>%
                     "DV_CN30R",
                     "DV_VC30R",
                     "DV_VP30R",
+                    "TBC_41AR",
                     "FIRSTTRR",
                     "HHLDSIZE",
                     "GENDER")),
@@ -132,6 +134,7 @@ ctns <- ctns %>%
     DV_CN30R,
     DV_VC30R,
     DV_VP30R,
+    TBC_41AR,
     otp_any,
     HHLDSIZE,
     GENDER,
@@ -148,5 +151,30 @@ Generate some descriptive statistics for the variables as they exist on the file
 #| results: asis
 ctns %>% 
   descriptives() %>% 
-  print_descriptives(ctns)
+  print_descriptives()
 ```
+
+Judging from our descripives above, we can see that including TBC_41AR drastically lowers the n of valid cases. See Valid Frequency for TBC_41AR comparted to others, and see it's effect on the Listwise Frequency. Let's drop this variable and see how much that helps the descriptives.\
+
+```{r Check without TBC_41AR}
+ctns %>% 
+  select(-TBC_41AR) %>% 
+  descriptives() %>% 
+  print_descriptives()
+```
+
+We're up from 129 to 932, a massive increase in robustness with minimal loss of explanatory power. Let's drop this variable from the dataset going forward as we get closer to analysis.
+
+```{r drop TBC_41AR}
+ctns <- ctns %>% select(-TBC_41AR)
+```
+
+Now let's check our correlations between variables and their significance. Note that at this point we have converted categorical variables into dummy binary variables. This is how we will deal with these going forward, for the most part.
+
+```{r correlations}
+ctns %>% 
+  correlation_table() %>% 
+  print_correlations()
+```
+
+\
