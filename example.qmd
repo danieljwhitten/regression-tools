@@ -10,7 +10,7 @@ bibliography: references.bib
 Import essential functions first (this step is hidden).
 
 ```{r setup}
-#| include: false
+#| echo: false
 source("./regression_functions.R")
 ```
 
@@ -39,7 +39,7 @@ There are no truly continuous variables on the PUMF, for confidentiality reasons
 
 To rescale, we will take the median value between the range of each value. Eg.
 
-`TBC_30AR == 5` changes from "`21 to 25 cigarettes"` to `23`.
+`TBC_30AR == 5` changes from `"21 to 25 cigarettes"` to `23`.
 
 ```{r define DV}
 ctns <- ctns_master %>% 
@@ -65,8 +65,7 @@ We need to create one to measure (`otp_any`) for Other Tobacco Products, based o
 ctns <- ctns %>% 
   mutate(otp_any = case_when(
     if_any(OTP_05A:OTP_05ER, ~ .x < 4) ~ 1,
-    if_any(OTP_05A:OTP_05ER, ~ .x == 4) ~ 0
-    ))
+    if_any(OTP_05A:OTP_05ER, ~ .x == 4) ~ 0))
 ```
 
 Levels 1 and 2 of `AGEGROUP` are 5-year increments, while the others are 10-year increments. If we recode this, the remaining 6 ordinal categories should be sufficient to treat as continuous[@robitzsch2020].
@@ -74,9 +73,8 @@ Levels 1 and 2 of `AGEGROUP` are 5-year increments, while the others are 10-year
 ```{r define agerange}
 ctns <- ctns %>% 
   mutate(agerange = 
-           case_when(
-             AGEGROUP < 3 ~ 1,
-             TRUE ~ AGEGROUP - 1))
+           case_when(AGEGROUP < 3 ~ 1,
+                     TRUE ~ AGEGROUP - 1))
 ```
 
 For the rest of our independent variables, we need to:
@@ -157,6 +155,7 @@ ctns %>%
 Judging from our descripives above, we can see that including TBC_41AR drastically lowers the n of valid cases. See Valid Frequency for TBC_41AR comparted to others, and see it's effect on the Listwise Frequency. Let's drop this variable and see how much that helps the descriptives.\
 
 ```{r Check without TBC_41AR}
+#| results: asis
 ctns %>% 
   select(-TBC_41AR) %>% 
   descriptives() %>% 
@@ -172,9 +171,18 @@ ctns <- ctns %>% select(-TBC_41AR)
 Now let's check our correlations between variables and their significance. Note that at this point we have converted categorical variables into dummy binary variables. This is how we will deal with these going forward, for the most part.
 
 ```{r correlations}
+#| results: asis
 ctns %>% 
   correlation_table() %>% 
   print_correlations()
 ```
 
-\
+If we are happy with the correlations above, we can proceed with fitting the model and getting any/all of the statistics we need to measure effects and assess assumptions.
+
+First, we can define the formula for our regression. Typically this is in the format `DV ~ IV1 + IV2 + ... + IVn`. However, if we want to use all of the variables in this dataset (as we have selected only our relevant variables), we can just specify the DV and use `.` as shorthand to mean "rest of the dataset specified in the `data =` argument.
+
+In our case, the DV will be the `cigavg` variable we created above.
+
+```{r define formula}
+fit_formula <- cigavg ~ .
+```

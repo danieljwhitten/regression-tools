@@ -265,8 +265,9 @@ correlation_table <- function(dat) {
   cor_coef <- correlations$r[-1,-1]
   cor_p <- correlations$P[-1,-1]
   mycor <- data.frame(matrix(nrow = nrow(cor_coef), ncol = ncol(cor_coef)))
-  for (i in 1:nrow(cor_coef)){
-    for (j in 1:ncol(cor_coef)){
+ 
+   for (i in 1:nrow(cor_coef)) {
+    for (j in 1:ncol(cor_coef)) {
       if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.001) p <- "***" else
         if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.01) p <- "**" else
           if (!is.na(cor_p[i,j]) & cor_p[i,j] < 0.05) p <- "*" else 
@@ -291,7 +292,7 @@ print_correlations <- function(cor) {
       caption = "Pearson Correlation Coefficients") %>% 
     row_spec(0, align = "l", bold = F, font_size = 10) %>% 
     kable_classic(full_width = F, html_font = "Cambria", fixed_thead = T, font_size = 10) %>%
-    footnote(general = "***p < 0.001; **p<0.01; *p<0.05; 'p<0.1") %>% 
+    footnote(general = "\\*\\*\\*p < 0.001; \\*\\*p<0.01; \\*p<0.05; 'p<0.1") %>% 
     column_spec(1, border_right = T)
   
   print(cor_tbl)
@@ -300,30 +301,78 @@ print_correlations <- function(cor) {
 regress_and_check <- function(formula, dat) {
 
   dat_w_dummies <- as.data.frame(dummies(dat)[-1,-1]) 
-    
+  
   descr_stats <- quant_describe(dat_w_dummies)
   
   corr_tbl <- correlation_table(dat_w_dummies)
   
-  fit <- lm(formula, dat)
+  model <- lm(formula, dat)
   
-  fit_anova <- anova(fit)
+  model_anova <- anova(model)
   
-  fit_summary <- summary(fit, correlation = TRUE)
+  model_summary <- summary(model, correlation = TRUE)
   
-  fit_summary2 <- summ(fit, 
-                       vifs = TRUE, 
-                       part.corr = TRUE, 
-                       confint = TRUE)
+  model_summary2 <- summ(model, 
+                         vifs = TRUE, 
+                         part.corr = TRUE, 
+                         confint = TRUE)
   
-  fit_zsummary <- summ(fit, 
-                       scale = TRUE,
-                       vifs = TRUE, 
-                       part.corr = TRUE, 
-                       confint = TRUE)
+  model_summary3 <- summ(model, robust = TRUE)
   
+  model_zsummary <- summ(model, 
+                         scale = TRUE,
+                         confint = TRUE)
+  model_zsummary2 <- summ(model,
+                          scale = TRUE)
+  model_zsummary3 <- summ(model,
+                          scale = TRUE,
+                          robust = TRUE)
   
+  fstat_p <- pf(model_summary$fstatistic[1], 
+                model_summary$fstatistic[2], 
+                model_summary$fstatistic[3], 
+                lower.tail = FALSE)
   
+  if (fstat_p < 0.001) fstat_sig <- "***" else
+    if (fstat_p < 0.01) fstat_sig <- "**" else
+      if (fstat_p < 0.05) fstat_sig <- "*" else
+        if (fstat_p < 0.1) fstat_sig <- "'" else
+          fstat_sig <- ""
+  
+  RSE <- sqrt(deviance(model)/df.residual(model))
+  
+  coef <- data.frame(
+    coefficient = model$coefficients,
+    sig = case_when(model_summary$coefficients[,4] < 0.001 ~ "***",
+                    model_summary$coefficients[,4] < 0.01 ~ "**",
+                    model_summary$coefficients[,4] < 0.05 ~ "*",
+                    model_summary$coefficients[,4] < 0.1 ~ "'",
+                    TRUE ~ ""),
+    SE = model_summary$coefficients[,2],
+    robust_SE = model_summary3$coeftable[,2],
+    CILB = model_summary2$coeftable[,2],
+    CIUB = model_summary2$coeftable[,3],
+    t = model_summary2$coeftable[,4],
+    scaled_coef = model_zsummary$coeftable[,1],
+    scaled_SE = model_zsummary2$coeftable[,2],
+    scaled_robust_SE = model_zsummary3$coeftable[,2],
+    scaled_CILB = model_zsummary2$coeftable[,2],
+    scaled_CIUB = model_zsummary2$coeftable[,3],
+    p = model_summary$coefficients[,4],
+    correlation = model_summary$correlation[,1],
+    partial_correlation = model_summary2$coeftable[,7],
+    semipartial_correlation = model_summary2$coeftable[,8],
+    vif = model_summary2$coeftable[,6],
+    tolerance = 1/model_summary2$coeftable[,6],
+    covariance_intercept = model_summary$cov.unscaled[,1]
+  )
+  
+  fit_stats <- c(r2 = model_summary$r.squared,
+                 adj.r2 = model_summary$adj.r.squared,
+                 f = model_summary$fstatistic,
+                 sig = fstat_sig,
+                 p = fstat_p,
+                 residual_standard_error = RSE)
 }
 
 
