@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 *.html
+*_files/
+Reference_Materials/
+references.bib
