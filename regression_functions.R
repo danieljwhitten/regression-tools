@@ -7,6 +7,7 @@ library(labelled)
 library(knitr)
 library(kableExtra)
 library(tidyverse)
+library(qqplotr)
 source("../statcan-data-input/data_from_txt_and_sas.R")
 
 
@@ -369,10 +370,78 @@ regress_and_check <- function(formula, dat) {
   
   fit_stats <- c(r2 = model_summary$r.squared,
                  adj.r2 = model_summary$adj.r.squared,
-                 f = model_summary$fstatistic,
+                 f = model_summary$fstatistic[1],
                  sig = fstat_sig,
                  p = fstat_p,
                  residual_standard_error = RSE)
+  
+  
+  dw = durbinWatsonTest(model)
+  
+  influence = influence.measures(model)
+  
+  zvals = zvals(model)
+  
+  return(list(
+    model = model,
+    descriptives = descr_stats,
+    anova = model_anova,
+    coefficients = coef,
+    fit = fit_stats))
 }
 
+zvals <- function(model){
+  zvals = data.frame(zresid = rstandard(model),
+                     zpred = scale(model$fitted.values)) %>% 
+    mutate(pdist = pnorm(zresid))
+  return(zvals)
+}
 
+residual_plots <- function(model){
+  
+  zpred_zresid = zvals(model)
+  
+  zpred_plot <- ggplot(data = zpred_zresid, aes(zpred, zresid)) +
+    geom_point() +
+    geom_abline(aes(intercept = 0, slope = 0)) + 
+    labs(x = "Standardized Predicted Values", 
+         y = "Standardized Residuals",
+         title = "Residuals against Predicted Values")
+  
+  zresid_plot <- ggplot(data = zpred_zresid, aes(zresid)) +
+    geom_histogram(binwidth = 0.3) +
+    stat_function(
+      fun = function(x)
+        dnorm(x, mean = 0, sd = 1) * length(zpred_zresid$zresid) * 0.3
+    ) +
+    labs(x = "Standardized Residuals",
+         y = NULL,
+         title = "Distribution of Residuals") +
+    scale_y_discrete(labels = NULL, breaks = NULL)
+  
+  pp_plot <- ggplot(data = zpred_zresid, mapping = aes(sample = zresid)) +
+    stat_pp_band() +
+    stat_pp_line() +
+    stat_pp_point() +
+    labs(x = "Observed Probability", 
+         y = "Expected Probability",
+         title = "P-P Plot of Standardized Residuals")
+  
+  print(zpred_plot)
+  print(zresid_plot)
+  print(pp_plot)
+  
+
+}
+
+partial_plots <- function(model, layout = NA){
+  crPlots(model, 
+          layout = layout, 
+          main = "Partial Plots", 
+          ask = FALSE)
+}
+
+allplots <- function(model, partial_layout = NA) {
+  residual_plots(model)
+  partial_plots(model, partial_layout)
+}
