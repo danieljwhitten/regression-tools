@@ -71,7 +71,6 @@ source("../statcan-data-input/data_from_txt_and_sas.R")
 #          PROV_C,
 #          agerange)
 # 
-# #across(where(is.factor), fct_infreq),
 
 freq_table <- function(dat, v) {
   freq_tab <- table(dat[[v]], useNA = "always")

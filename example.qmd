@@ -7,10 +7,11 @@ bibliography: references.bib
 
 ## Setup Data
 
-Import essential functions first (this step is hidden).
+Import essential functions first.
 
 ```{r setup}
-#| echo: false
+#| message: false
+#| warning: false
 source("./regression_functions.R")
 ```
 
@@ -179,10 +180,34 @@ ctns %>%
 
 If we are happy with the correlations above, we can proceed with fitting the model and getting any/all of the statistics we need to measure effects and assess assumptions.
 
-First, we can define the formula for our regression. Typically this is in the format `DV ~ IV1 + IV2 + ... + IVn`. However, if we want to use all of the variables in this dataset (as we have selected only our relevant variables), we can just specify the DV and use `.` as shorthand to mean "rest of the dataset specified in the `data =` argument.
+One last step we might want to take is to reorder our factor levels. By default the first category will be the reference category. We could manually recode each factor and put our chosen reference category first, or we could reorder them in order of frequency, or a combination of both for different variables.
 
-In our case, the DV will be the `cigavg` variable we created above.
+Below, we will reverse the order of `DV_AL30R`, `DV_CN30R`, `DV_VC30R`, and `DV_VP30R` so that `No` is the reference category (for ease of interpretation, seeing the effect of `Yes`). We will also rearrange `PROV_C` to keep its current order, but put the most common response first, to be the reference category. Lastly, we will reorder `FIRSTTRR` in order of descending frequency.
+
+We can check the levels are as expected using `sapply()` and `levels()`.
+
+(Please refer to the `forcats` cheatsheet [here](https://rstudio.github.io/cheatsheets/factors.pdf) for more ways to treat factor order)
+
+```{r reorder factor levels}
+
+ctns <- ctns %>% 
+  mutate(across(matches("DV_..30R"), fct_rev),
+         PROV_C = fct_relevel(PROV_C, levels(fct_infreq(PROV_C))[1]),
+         FIRSTTRR = fct_infreq(FIRSTTRR))
+
+ctns %>% select(where(is.factor)) %>% sapply(levels)
+```
+
+Now we can define the formula for our regression. Typically this is in the format DV \~ IV1 + IV2 + ... + IVn. However, if we want to use all of the variables in this dataset (as we have selected only our relevant variables), we can just specify the DV and use . as shorthand to mean "rest of the dataset specified in the data = argument".
+
+In our case, the DV will be the cigavg variable we created above.
 
 ```{r define formula}
 fit_formula <- cigavg ~ .
+```
+
+```{r}
+#| warning: false
+model_stats = regress_and_check(fit_formula, ctns)
+allplots(model_stats$model, c(2,3))
 ```
