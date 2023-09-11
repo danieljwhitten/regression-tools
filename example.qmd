@@ -195,19 +195,15 @@ ctns <- ctns %>%
          PROV_C = fct_relevel(PROV_C, levels(fct_infreq(PROV_C))[1]),
          FIRSTTRR = fct_infreq(FIRSTTRR))
 
-ctns %>% select(where(is.factor)) %>% sapply(levels)
+ctns %>% select(where(is.factor)) %>% sapply(levels) %>% print()
 ```
 
-Now we can define the formula for our regression. Typically this is in the format DV \~ IV1 + IV2 + ... + IVn. However, if we want to use all of the variables in this dataset (as we have selected only our relevant variables), we can just specify the DV and use . as shorthand to mean "rest of the dataset specified in the data = argument".
+Now we can define the formula for our regression. Typically this is in the format DV \~ IV1 + IV2 + ... + IVn. However, if we want to use all of the variables in this dataset (as we have selected only our relevant variables), we can just specify the DV and use . as shorthand to mean "rest of the dataset specified in the data = argument". `regress_and_check()` relies on this shorthand, and allows you to specify just a DV and data, assuming that the rest of the variables will be included as IVs.
 
-In our case, the DV will be the cigavg variable we created above.
+(NB, if you have not already included/excluded IVs from your dataset, you can do so in the function call, eg. `regress_and_check(DV, select(dat, c(IV1, IV2, ..., IVn)`.
+
+In our case, the DV will be the cigavg variable we created above, and our dataset is already ready for analysis.
 
 ```{r define formula}
-fit_formula <- cigavg ~ .
-```
-
-```{r}
-#| warning: false
-model_stats = regress_and_check(fit_formula, ctns)
-allplots(model_stats$model, c(2,3))
+model_summary <- regress_and_check("cigavg", ctns)
 ```

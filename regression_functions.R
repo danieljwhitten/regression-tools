@@ -233,29 +233,35 @@ print_descriptives <- function(desc_in) {
   print(quant_tbl)
 }
 
-dummies <- function(dat){
-  out <- model.matrix(
-    ~ .,
-    data = dat,
-    contrasts.arg = lapply(dat[, 
-                               sapply(dat, is.factor), 
-                               drop = FALSE],
-                           contrasts, contrasts = FALSE))
+dummies <- function(dat, ref_cat = FALSE){
+  if (ref_cat) out <- model.matrix(~ ., data = dat) else 
+    out <- model.matrix(
+      ~ .,
+      data = dat,
+      contrasts.arg = lapply(dat[, 
+                                 sapply(dat, is.factor), 
+                                 drop = FALSE],
+                             contrasts, contrasts = FALSE))
   
   return(out)
 }
 
-dummy_names <- function(dat) {
-  detail = sapply(names(dat), 
-                  \(x) sapply(levels(dat[[x]]), 
-                              \(y) paste(x, y, sep = " - ")))
+dummy_names <- function(dat, ref_cat = FALSE) {
+  detail <- sapply(names(dat), 
+                  \(x) sapply(
+                    levels(dat[[x]])[ref_cat + 1:length(levels(dat[[x]]))], 
+                    \(y) paste(x, y, sep = " - ")))
   detail[sapply(names(dat), 
-                \(x) length(levels(dat[[x]]))) == 0] <-
+                \(x) length(
+                  levels(dat[[x]])[ref_cat + 1:length(levels(dat[[x]]))])
+                ) == 0] <-
     names(dat)[sapply(names(dat), 
-                      \(x) length(levels(dat[[x]]))) == 0]
+                      \(x) length(
+                        levels(dat[[x]])[ref_cat + 1:length(levels(dat[[x]]))])
+                      ) == 0]
   detail <- unlist(detail)
   names(detail) <- NULL
-  
+  detail <- detail[!(grepl("NA", detail))]
   return(detail)
 }
 
@@ -298,13 +304,13 @@ print_correlations <- function(cor) {
   print(cor_tbl)
 }
 
-regress_and_check <- function(formula, dat) {
+regress_and_check <- function(DV, dat) {
 
-  dat_w_dummies <- as.data.frame(dummies(dat)[-1,-1]) 
+  formula = as.formula(paste(DV, " ~ ."))
+  
+  dat_w_dummies <- as.data.frame(dummies(dat, TRUE)[-1,-1]) 
   
   descr_stats <- quant_describe(dat_w_dummies)
-  
-  corr_tbl <- correlation_table(dat_w_dummies)
   
   model <- lm(formula, dat)
   
@@ -374,25 +380,70 @@ regress_and_check <- function(formula, dat) {
                  p = fstat_p,
                  residual_standard_error = RSE)
   
+  dw <- dwt(model)
   
-  dw = durbinWatsonTest(model)
+  influence <- influence.measures(model)
   
-  influence = influence.measures(model)
+  influence_measures <- as_tibble(influence$infmat) %>% 
+    rowwise() %>% 
+    mutate(max_dfb = max(abs(c_across(starts_with("dfb"))))) %>% 
+    ungroup() %>% 
+    mutate(case = as.numeric(rownames(influence$infmat)),
+           resid = model$residuals,
+           pred = model$fitted.values) %>%  
+    bind_cols(zvals(model)) %>% 
+    relocate(case, pred, zpred, resid, zresid, cov.r, cook.d, hat, dffit, max_dfb)
   
-  zvals = zvals(model)
+  names(influence_measures) <- dummy_names(dat, TRUE) %>% 
+    gsub(" ", "_", .) %>% 
+    gsub("^", "DFBeta_", .) %>% 
+    c("Case_Number",
+      "Predicted_Value",
+      "Standardized_Predicted_Value",
+      "Residual",
+      "Standardized_Residual",
+      "Covariance_Ratio", 
+      "Cook's_Distance", 
+      "Leverage",
+      "DFFit",
+      "Max_Abs_DFBeta",
+      .)
+  
+  influence_summary <- c(Durbin_Watson = dw$dw,
+                         p = dw$p,
+                         Max_Absolute_DFBeta = 
+                           max(influence_measures$Max_Abs_DFBeta),
+                         `Max_Cook's_Distance` = 
+                           max(influence_measures$`Cook's_Distance`),
+                         Max_Covariance_Ratio = 
+                           max(influence_measures$Covariance_Ratio),
+                         Max_Absolute_DFFit = 
+                           max(abs(influence_measures$DFFit)),
+                         Max_Leverage = 
+                           max(influence_measures$Leverage),
+                         `Resid_>3SD` = 
+                           sum(abs(influence_measures$Standardized_Residual) > 3.29, 
+                               na.rm = TRUE),
+                         `%_Resid_>2SD` = 
+                           mean(abs(influence_measures$Standardized_Residual) > 2.58, 
+                               na.rm = TRUE) * 100,
+                         `%_Resid_>1SD` = 
+                           mean(abs(influence_measures$Standardized_Residual) > 1.96, 
+                               na.rm = TRUE) * 100)
   
   return(list(
     model = model,
     descriptives = descr_stats,
     anova = model_anova,
     coefficients = coef,
-    fit = fit_stats))
+    fit = fit_stats,
+    cases = influence_measures,
+    influence = influence_summary))
 }
 
 zvals <- function(model){
   zvals = data.frame(zresid = rstandard(model),
-                     zpred = scale(model$fitted.values)) %>% 
-    mutate(pdist = pnorm(zresid))
+                     zpred = scale(model$fitted.values))
   return(zvals)
 }
 
